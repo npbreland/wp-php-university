@@ -1,0 +1,33 @@
+{
+    "name": "npbreland/wp-php-university",
+    "description": "WordPress Plugin for university management",
+    "type": "wordpress-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Nick Breland",
+            "email": "npbreland@tutanota.com"
+        }
+    ],
+    "repositories": [
+      {
+        "type": "path",
+        "url": "/home/nick/repos/php-university"
+      },
+      {
+        "type": "composer",
+        "url": "https://wpackagist.org"
+      }
+    ],
+    "require": {
+        "npbreland/php-university": "@dev",
+        "wpackagist-plugin/advanced-custom-fields":"5.12"
+    },
+    "extra": {
+      "installer-paths": {
+        "vendor/{$name}/": [
+          "type:wordpress-plugin"
+        ]
+      }
+    }
+}
