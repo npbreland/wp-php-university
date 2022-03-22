@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1550154645f45a8e6e079c7dd4f84364",
+    "content-hash": "0d4cee0674dd6fdb5e899b0ff8886d4d",
     "packages": [
         {
             "name": "composer/installers",
@@ -156,7 +156,7 @@
             "dist": {
                 "type": "path",
                 "url": "/home/nick/repos/php-university",
-                "reference": "4f504f2d229e9df049551bdf7ba7b7815b372fda"
+                "reference": "88071bcf0a8ecf8870f3df618546f73ef5fc6a8b"
             },
             "type": "library",
             "license": [
@@ -170,6 +170,7 @@
             ],
             "description": "University management",
             "transport-options": {
+                "symlink": false,
                 "relative": false
             }
         },

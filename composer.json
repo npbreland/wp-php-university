@@ -12,7 +12,10 @@
     "repositories": [
       {
         "type": "path",
-        "url": "/home/nick/repos/php-university"
+        "url": "/home/nick/repos/php-university",
+        "options": {
+          "symlink": false
+        }
       },
       {
         "type": "composer",
@@ -20,8 +23,8 @@
       }
     ],
     "require": {
-        "npbreland/php-university": "@dev",
-        "wpackagist-plugin/advanced-custom-fields":"5.12"
+        "wpackagist-plugin/advanced-custom-fields":"5.12",
+        "npbreland/php-university": "@dev"
     },
     "extra": {
       "installer-paths": {
