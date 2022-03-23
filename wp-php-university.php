@@ -21,11 +21,68 @@ function setup_post_types()
     register_post_type( 'course' , [
         'public' => true,
         'label' => 'Courses',
+        'supports' => false // Removes editor/title
     ] );
     register_post_type( 'class' , [
         'public' => true,
         'label' => 'Classes',
+        'supports' => false
     ] );
+}
+
+// https://developer.wordpress.org/reference/hooks/manage_post_type_posts_columns/
+function class_column_list( $columns )
+{
+    unset ( $columns['title'] );
+    unset ( $columns['date'] );
+    $columns['course'] = 'Course';
+    $columns['days_time'] = 'Days/Time';
+    $columns['instructor'] = 'Instructor';
+    return $columns;
+}
+add_filter( 'manage_class_posts_columns', __NAMESPACE__.'\\class_column_list' );
+
+// https://developer.wordpress.org/reference/hooks/manage_post-post_type_posts_custom_column/
+function class_custom_column_values( $column, $post_id )
+{
+    switch ( $column ) {
+        case 'instructor' :
+            $instructor = get_field( 'field_phpuni_class_instructor', $post_id );
+            $first = $instructor['user_firstname'];
+            $last = $instructor['user_lastname'];
+            echo "$last, $first";
+            break;
+        case 'course' :
+            $course = get_field( 'field_phpuni_class_course', $post_id );
+            echo $course->post_title;
+            break;
+        case 'days_time' :
+            $days = get_field( 'field_phpuni_class_days', $post_id );
+
+            $day_str = array_reduce($days, __NAMESPACE__ . '\\getDayAbbreviation', '');
+
+            $start_time = get_field( 'field_phpuni_class_start_time', $post_id );
+            $end_time = get_field( 'field_phpuni_class_end_time', $post_id );
+
+            echo "$day_str $start_time-$end_time";
+    }
+}
+add_action( 'manage_class_posts_custom_column', __NAMESPACE__.'\\class_custom_column_values', 10, 2 );
+
+function getDayAbbreviation($str, $day_num)
+{
+    $table = [
+        '1' => 'M',
+        '2' => 'Tu',
+        '3' => 'W',
+        '4' => 'Th',
+        '5' => 'F',
+        '6' => 'Sa',
+        '7' => 'Su',
+    ];
+
+    $str = $str . $table[$day_num];
+    return $str;
 }
 
 function acf_add_local_field_groups()
@@ -153,7 +210,7 @@ function validate_course_code( $valid, $value, $field, $input_name )
 
     $course_with_this_code = get_course_by_code( $value );
 
-    if ( $course_with_this_code && $course_with_this_code != $ID ) {
+    if ( $course_with_this_code && $course_with_this_code->ID != $ID ) {
         $err_msg = <<<MSG
 Another course has the course code $value. Please enter a unique course code.
 MSG;
@@ -163,7 +220,6 @@ MSG;
     return $valid;
 }
 
-
 add_action( 'acf/validate_save_post', __NAMESPACE__ . '\\validate_save');
 function validate_save()
 {
@@ -171,38 +227,126 @@ function validate_save()
     $end_time = $_POST['acf']['field_phpuni_class_end_time'];
 
     if ( isset($start_time) && $start_time >= $end_time ) {
-        $err_msg = "The end time must be greater than start time.";
-        \acf_add_validation_error( 'acf[field_phpuni_class_end_time]', $err_msg );
+        $err_msg = "The end time must be after the start time.";
+        acf_add_validation_error( 'acf[field_phpuni_class_end_time]', $err_msg );
     }
 
-    $start_date = new \DateTime($_POST['acf']['field_phpuni_class_start_date']);
-    $end_date = new \DateTime($_POST['acf']['field_phpuni_class_end_date']);
+    $start_date_input = $_POST['acf']['field_phpuni_class_start_date'];
+    $end_date_input = $_POST['acf']['field_phpuni_class_end_date'];
+
+
+    if ( !$start_date_input || !$end_date_input ) {
+        return;
+    }
+
+    $start_date = new \DateTime($start_date_input);
+    $end_date = new \DateTime($end_date_input);
 
     if ( $start_date >= $end_date ) {
-        $err_msg = "The end date must be greater than start date.";
-        \acf_add_validation_error( 'acf[field_phpuni_class_end_date]', $err_msg );
+        $err_msg = "The end date must be after the start date.";
+        acf_add_validation_error( 'acf[field_phpuni_class_end_date]', $err_msg );
     }
 
     $days = $_POST['acf']['field_phpuni_class_days'];
 
+    if ( !$days ) {
+        return;
+    }
+
     if ( !in_array( $start_date->format('N'), $days ) ) {
         $err_msg = "The start date must be one of the selected days.";
-        \acf_add_validation_error( 'acf[field_phpuni_class_start_date]', $err_msg );
+        acf_add_validation_error( 'acf[field_phpuni_class_start_date]', $err_msg );
     }
 
     if ( !in_array( $end_date->format('N'), $days ) ) {
         $err_msg = "The end date must be one of the selected days.";
-        \acf_add_validation_error( 'acf[field_phpuni_class_end_date]', $err_msg );
+        acf_add_validation_error( 'acf[field_phpuni_class_end_date]', $err_msg );
     }
 
+    /* 
     $instructor_id = $_POST['acf']['field_phpuni_class_instructor'];
     $all_classes_by_them = get_classes_by_instructor( $instructor_id );
 
     $this_class_ID = get_the_ID();
 
-    $other_classes = array_filter($all_classes_by_them, function ($class_ID) use ($this_class_ID) {
-        return $class_ID != $this_class_ID; 
-    });
+    $other_classes = array_filter(
+        $all_classes_by_them,
+        function ( $class ) use ( $this_class_ID ) {
+            return $class->ID != $this_class_ID; 
+        }
+    );
+
+
+    $other_class_times = [];
+    foreach ( $other_classes as $other ) {
+        $other_days = \get_field( 'field_phpuni_class_days', $other->ID ); 
+
+        if ( ! is_array( $other_days ) ) {
+            continue;
+        }
+
+        $other_start = \get_field( 'field_phpuni_class_start_time', $other->ID, false );
+        $other_end = \get_field( 'field_phpuni_class_end_time', $other->ID, false );
+
+        if ( ! $other_start || ! $other_end ) {
+            continue;
+        }
+
+        $start_pieces = explode( ':', $other_start );
+        $start_hour = intval( $start_pieces[0] );
+        $start_minute = intval( $start_pieces[1] );
+
+        $end_pieces = explode( ':', $other_end );
+        $end_hour = intval( $end_pieces[0] );
+        $end_minute = intval( $end_pieces[1] );
+
+
+        foreach ( $other_days as $day_num ) {
+
+            if ( !in_array( $day_num, $days ) ) {
+                continue;
+            }
+
+            $day_num = intval( $day_num );
+            $other_class_times[] = new \NPBreland\PHPUni\ClassTime(
+                $day_num,
+                $start_hour,
+                $start_minute,
+                $end_hour,
+                $end_minute
+            );
+        }
+    }
+
+    $start_pieces = explode( ':', $start_time );
+    $start_hour = intval( $start_pieces[0] );
+    $start_minute = intval( $start_pieces[1] );
+
+    $end_pieces = explode( ':', $end_time );
+    $end_hour = intval( $end_pieces[0] );
+    $end_minute = intval( $end_pieces[1] );
+
+    foreach ( $days as $day_num ) {
+        $day_num = intval( $day_num );
+        $class_time = new \NPBreland\PHPUni\ClassTime(
+            $day_num,
+            $start_hour,
+            $start_minute,
+            $end_hour,
+            $end_minute
+        );
+        
+        foreach ( $other_class_times as $other ) {
+            if ( $class_time->overlaps($other) ) {
+                $err_msg = <<<MSG
+The given days and time would overlap at least one other class by the instructor.
+MSG;
+                \acf_add_validation_error( 'acf[field_phpuni_class_start_time]', $err_msg );
+            }
+
+        }
+    }
+     */
 
 }
 
@@ -215,19 +359,7 @@ function get_course_by_code( $code )
         'meta_value' => $code,
     ];
 
-    $ID = false;
-
-    $the_query = new \WP_Query( $args );
-    if ( $the_query->have_posts() ) {
-        while ( $the_query->have_posts() ) {
-            $the_query->the_post();
-            $ID = get_the_ID();
-        }
-    }
-
-    wp_reset_query();
-
-    return $ID;
+    return \get_posts( $args );
 }
 
 function get_classes_by_instructor( $user_id )
@@ -239,19 +371,7 @@ function get_classes_by_instructor( $user_id )
         'meta_value' => $user_id,
     ];
 
-    $IDs = [];
-
-    $the_query = new \WP_Query( $args );
-    if ( $the_query->have_posts() ) {
-        while ( $the_query->have_posts() ) {
-            $the_query->the_post();
-            $IDs[] = get_the_ID();
-        }
-    }
-
-    wp_reset_query();
-
-    return $IDs;
+    return \get_posts( $args );
 }
 
 function add_roles()
